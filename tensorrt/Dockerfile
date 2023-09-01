@@ -1,5 +1,5 @@
 # 基于NVIDIA的TensorRT镜像构建Docker容器
-FROM nvcr.io/nvidia/tensorrt:21.11-py3
+FROM nvcr.io/nvidia/tensorrt:21.12-py3
 
 # 设置工作目录
 WORKDIR /app
