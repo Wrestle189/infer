@@ -9,36 +9,9 @@ import time
 import sys
 # Define a function to load the ONNX model and convert it to a TensorRT engine
 EXPLICIT_BATCH = 1 << (int)(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
-def load_and_convert_onnx_to_tensorrt(onnx_file_path, engine_file_path):
-    TRT_LOGGER = trt.Logger(trt.Logger.WARNING)
-    with trt.Builder(TRT_LOGGER) as builder, builder.create_network(EXPLICIT_BATCH) as network, builder.create_builder_config() as config, trt.OnnxParser(network, TRT_LOGGER) as parser:
-        # Parse the ONNX model
-        with open(onnx_file_path, 'rb') as model:
-            print('Beginning ONNX file parsing')
-            if not parser.parse(model.read()):
-                print ('ERROR: Failed to parse the ONNX file.')
-                for error in range(parser.num_errors):
-                    print (parser.get_error(error))
-                return None
-        
-        # Set inference batch size and data type
-        builder.max_batch_size = 1       
-        network.get_input(0).shape = [1, 3, 224, 224]
-
-        profile = builder.create_optimization_profile()
-        config = builder.create_builder_config()
-        config.add_optimization_profile(profile)
-        plan = builder.build_serialized_network(network, config)
-        engine = builder.deserialize_cuda_engine(plan)
-        # engine = builder.build_engine(network, config)
-
-        # print(engine)
-        with open(engine_file_path, 'wb') as f:
-            f.write(engine.serialize())
-
 # Define a function to load the TensorRT engine and perform inference
 def inference_with_tensorrt(engine_file_path, input_data):
-    output_data = np.empty((1, 1000), dtype = np.float32)
+    output_data = np.empty((1, 1, 960, 1280), dtype = np.float32)
     with open(engine_file_path, 'rb') as f, trt.Runtime(trt.Logger(trt.Logger.WARNING)) as runtime:
         engine = runtime.deserialize_cuda_engine(f.read())
         with engine.create_execution_context() as context:
@@ -84,7 +57,7 @@ def get_engine(onnx_file_path, batch_size,engine_file_path=""):
                         print (parser.get_error(error))
                     return None
             # The actual yolov3.onnx is generated with batch size 64. Reshape input to batch size 1
-            network.get_input(0).shape = [batch_size, 3, 224, 224]
+            network.get_input(0).shape = [batch_size, 3, 960, 1280]
             print('Completed parsing of ONNX file')
             print('Building an engine from file {}; this may take a while...'.format(onnx_file_path))
             plan = builder.build_serialized_network(network, config)
@@ -103,11 +76,6 @@ def get_engine(onnx_file_path, batch_size,engine_file_path=""):
     return build_engine()
    
 def resize_data_for_batch(data, batch):
-    if batch > 1:
-        n = len(data)
-        data = data * batch
-        for i in range(1, batch):
-            data[i * n: (i + 1) * n] = data[:n]
     return data   
     
 def get_input_data(input_file,batch_size):
@@ -124,12 +92,22 @@ def get_input_data(input_file,batch_size):
     custom_input_data = [float(line.strip().replace(",", "")) for line in data_lines]
     # input_shape = session.get_inputs()[0].shape
 
-    input_shape = [batch_size, 3, 224, 224]
+    input_shape = [batch_size, 3, 960, 1280]
 
     # 根据batchsize调整input_data的大小
     custom_input_data = resize_data_for_batch(custom_input_data, batch_size)
     input_data = np.array(custom_input_data, dtype=np.float32).reshape(input_shape)    
     return input_data
+
+def get_output_data(output_file, batch_size):
+    with open(output_file, "r") as file:
+        data_lines = file.readlines()
+    
+    custom_output_data = [float(line.split("//")[0].strip().replace(",", "")) for line in data_lines]
+
+    output_data = np.array(custom_output_data, dtype=np.float32).reshape([1, 166, 2, 5531])
+    return output_data
+
 
 if __name__ == "__main__":
     # if len(sys.argv) < 3:
@@ -143,10 +121,10 @@ if __name__ == "__main__":
     # total_iters = sys.argv[3]
     # num_threads = sys.argv[4]
     # trt_engine_file = sys.argv[5]
-    model_name="resnet"
+    model_name="dbnet"
     engine_file_path = "/vodla_workload/engines_self/"+model_name+".engine"
-    onnx_file_path="/vodla_workload/"+model_name+"/models/resnet50_v2.onnx"
-    input_file="/vodla_workload/"+model_name+"/data/input_0.txt"
+    onnx_file_path="/vodla_workload/"+model_name+"/models/dbnet.onnx"
+    input_file="/vodla_workload/"+model_name+"/data/dbnet_input.txt"
 
     batch_size=1
     num_inferences = 1  # 假设您要进行10次推理
